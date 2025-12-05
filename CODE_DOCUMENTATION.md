@@ -36,6 +36,7 @@ Stores admin, teacher, and student accounts with role-based fields.
 - email, password (hashed with bcrypt)
 - firstName, lastName, phone
 - role: 'admin' | 'teacher' | 'student'
+- isActive: boolean (for activate/deactivate functionality)
 - Teacher fields: department, specialization
 - Student fields: enrollmentNumber, program, semester, section
 
@@ -104,8 +105,13 @@ Stores generated timetables per class
 ## API Routes
 
 ### Authentication (`/auth`)
-- POST `/register` - Create new user account
+- POST `/register` - Create new user account (teachers/students)
 - POST `/login` - Authenticate user, returns JWT token
+- GET `/users` - List all users (admin only)
+- PUT `/users/:id` - Update user details
+- PUT `/users/:id/activate` - Activate user account (admin only)
+- PUT `/users/:id/deactivate` - Deactivate user account (admin only)
+- DELETE `/users/:id` - Delete user (admin only)
 
 ### Departments (`/departments`)
 - GET `/` - List all departments
@@ -148,16 +154,22 @@ Stores generated timetables per class
 - GET `/teacher/:teacherId` - Get teacher's combined timetable
 
 ### Subjects (`/subjects`)
-- GET `/` - List all subjects
+- GET `/` - List all subjects (with department population)
 - POST `/add` - Create subject
+- PUT `/:id` - Update subject
+- DELETE `/:id` - Delete subject
 
 ### Teachers (`/teachers`)
 - GET `/` - List all teachers
 - POST `/add` - Create teacher
+- PUT `/:id` - Update teacher
+- DELETE `/:id` - Delete teacher
 
 ### Classrooms (`/classrooms`)
 - GET `/` - List all classrooms
 - POST `/add` - Create classroom
+- PUT `/:id` - Update classroom
+- DELETE `/:id` - Delete classroom
 
 ---
 
@@ -279,11 +291,108 @@ for t_name in all_teachers:
 ### Key Components
 - **Login/Register** - Authentication
 - **Dashboard** - Role-based home page
-- **Departments/Programs/Classes** - Academic structure management
+- **Departments** - Full CRUD for departments (Add/Edit/Delete)
+- **Programs** - Full CRUD for programs with department selection
+- **Classes** - Full CRUD for classes with program/semester/section
+- **Subjects** - Full CRUD for subjects with type/credits/department
+- **Classrooms** - Full CRUD for classrooms with capacity
+- **Teachers** - Full CRUD for simplified teacher model
+- **Users** - Full CRUD (Create Teacher/Student, Edit, View, Activate/Deactivate, Delete)
 - **AssignSubjects** - Assign subjects to classes with teachers (CRITICAL for correct mapping)
 - **GenerateTimetableNew** - Generate class-specific timetables
 - **ViewTimetables** - View all generated timetables
 - **TimetableDisplay** - Display individual timetable
+- **StudentTimetable** - Students view their class timetable
+- **TeacherTimetable** - Teachers view their teaching schedule (combined + class-wise)
+
+---
+
+## User Management (Phase 5 - Complete)
+
+### Create User Functionality
+
+**Backend Route:** POST `/auth/register`
+
+**For Teachers:**
+```javascript
+{
+  email: "teacher@college.edu",
+  password: "password123",
+  firstName: "John",
+  lastName: "Doe",
+  phone: "1234567890",
+  role: "teacher",
+  department: "CS",        // Department code
+  specialization: "AI/ML"
+}
+```
+
+**For Students:**
+```javascript
+{
+  email: "student@college.edu",
+  password: "password123",
+  firstName: "Jane",
+  lastName: "Smith",
+  phone: "1234567890",
+  role: "student",
+  enrollmentNumber: "2023CS001",
+  program: "BTECH-CS",     // Program code
+  semester: 3,
+  section: "A"
+}
+```
+
+**Validation:**
+- Email uniqueness checked
+- Password must be at least 6 characters
+- Enrollment number uniqueness checked for students
+- All required fields validated
+
+### Edit User Functionality
+
+**Backend Route:** PUT `/auth/users/:id`
+
+**What Can Be Updated:**
+- First Name, Last Name, Phone
+- Teacher: Department, Specialization
+- Student: Enrollment Number, Program, Semester, Section
+
+**Security Restrictions:**
+- Email cannot be changed (read-only)
+- Role cannot be changed (security)
+- Password cannot be changed via this route (use separate change-password route)
+- Admin accounts cannot be edited/deleted (except by themselves)
+
+### Frontend Implementation (Users.jsx)
+
+**Features:**
+1. **Create Modals:**
+   - Separate modals for creating teachers and students
+   - Dynamic form fields based on user type
+   - Department dropdown for teachers
+   - Program dropdown for students
+   - Form validation with required fields
+   - Success/error messaging
+
+2. **Edit Modals:**
+   - Pre-filled form with existing user data
+   - Email field disabled (read-only)
+   - Role-specific fields (teacher vs student)
+   - Same validation as create forms
+
+3. **User Table:**
+   - Filter by role (All/Admin/Teacher/Student)
+   - Display user details based on role
+   - Action buttons: Edit, Activate/Deactivate, Delete
+   - Admin accounts protected from editing/deletion
+
+4. **UI/UX:**
+   - Professional modal dialogs
+   - Scrollable forms for mobile compatibility
+   - Auto-dismissing success/error messages
+   - Loading states during API calls
+   - Consistent styling with other management pages
 
 ---
 
@@ -304,12 +413,23 @@ for t_name in all_teachers:
 - Constraint Rule 1 enforces correct teacher for each subject
 - **Status:** ✅ FIXED in both `timetables.js` and `main.py`
 
-### Issue 2: Timetable Display Shows Only Semester (Not Fixed Yet)
-**Problem:** In ViewTimetables, cards show only "Semester X" without full context.
+### ✅ FIXED: Student Timetable "Program Not Found" Error
+**Issue:** Students getting "Program not found" error even with published timetables.
 
-**Root Cause:** Missing nested population in timetable queries.
+**Root Cause:** Query only searched by `program.name`, but student might have `program.code` stored.
 
-**Solution Needed:** Populate class → program → department in queries.
+**Fix Applied:**
+- Updated query to search using `$or` operator for both name AND code
+- **Status:** ✅ FIXED in `timetables.js`
+
+### ✅ COMPLETED: User Creation & Editing UI
+**Issue:** Admins could only manage users via seed data or manual registration.
+
+**Fix Applied:**
+- Added Create Teacher/Student modals to Users.jsx
+- Added Edit User modal with role-based fields
+- Integrated department and program dropdowns
+- **Status:** ✅ COMPLETE
 
 ---
 
@@ -378,28 +498,55 @@ npm run dev
 
 ---
 
-## Testing the Fix
+## Testing the System
 
-### Verify Correct Teacher Assignment:
+### Test User Creation:
 
 1. Login as admin (admin@college.edu / admin123)
 
-2. Go to "Assign Subjects" page
-   - Select a class (e.g., "B.Tech CS - Sem 3 - Section A")
+2. Go to "Users" page from dashboard
+
+3. **Create a Teacher:**
+   - Click "+ Create Teacher"
+   - Fill in: Email, Password (min 6 chars), First/Last Name, Phone
+   - Select Department from dropdown
+   - Add Specialization
+   - Click "Create"
+   - Verify success message
+
+4. **Create a Student:**
+   - Click "+ Create Student"
+   - Fill in: Email, Password (min 6 chars), First/Last Name, Phone
+   - Enter unique Enrollment Number
+   - Select Program from dropdown
+   - Enter Semester (1-8) and Section (A-Z)
+   - Click "Create"
+   - Verify success message
+
+5. **Edit a User:**
+   - Click "Edit" button on any teacher or student
+   - Modify fields (email is read-only)
+   - Click "Update"
+   - Verify changes in table
+
+### Test Timetable Generation:
+
+1. Go to "Assign Subjects" page
+   - Select a class
    - View assigned subjects and their teachers
    - Note which teacher is assigned to each subject
 
-3. Go to "Generate Timetable"
+2. Go to "Generate Timetable"
    - Select the same class
    - Click "Generate Timetable"
    - Wait for generation (~5-10 seconds)
 
-4. View generated timetable
+3. View generated timetable
    - Check each subject in the timetable
-   - Verify teacher name matches the assignment from step 2
-   - Example: "Cloud Computing" should show "Arun Pillai" (not "Deepak Shah")
+   - Verify teacher name matches the assignment
+   - Example: "Cloud Computing" should show correct assigned teacher
 
-5. Success criteria:
+4. Success criteria:
    - ✅ Each subject taught by correct assigned teacher
    - ✅ No teachers teaching unassigned subjects
    - ✅ All constraints satisfied (no clashes, lunch break, etc.)
@@ -420,20 +567,6 @@ npm run dev
 3. Finds matching program in database (by name OR code)
 4. Finds the class matching program + semester + section
 5. Returns the published timetable for that class
-
-**Recent Fix (Dec 5, 2025):**
-- **Issue:** Students got "Program not found" error even with published timetables
-- **Root Cause:** Query only searched by `program.name`, but student might have `program.code` stored
-- **Solution:** Updated to search using `$or` operator for both name AND code:
-
-```javascript
-const program = await Program.findOne({
-  $or: [
-    { name: student.program },  // e.g., "Bachelor of Technology in Computer Science"
-    { code: student.program }   // e.g., "BTECH-CS"
-  ]
-});
-```
 
 **Response Structure:**
 ```json
@@ -460,24 +593,15 @@ const program = await Program.findOne({
 }
 ```
 
-**Error Responses:**
-- 404: Student not found
-- 400: User is not a student
-- 404: Program not found (with details showing what was searched)
-- 404: No class found for program/semester/section combination
-- 404: No published timetable found for the class
-
-**Usage in Frontend:**
-```javascript
-// StudentTimetable.jsx
-const response = await fetch(`/api/timetables/student/${userId}`);
-const data = await response.json();
-// Display timetable from data.timetable.schedule
-```
-
 ---
 
-**Last Updated:** December 5, 2025
-**Recent Fixes:** 
+**Last Updated:** December 6, 2025 - Session 2
+
+**Recent Updates:** 
 1. Subject-Teacher mapping enforced in solver to prevent wrong teacher assignments
 2. Student timetable endpoint now searches program by both name and code
+3. All entity management now has full CRUD (Classrooms, Subjects, Teachers, Users)
+4. Enhanced Subjects with department selection, type, and credits fields
+5. Professional UI for all management pages with Edit/Delete functionality
+6. **✅ User Management Complete - Create/Edit functionality for Teachers and Students**
+7. **✅ PHASE 5 COMPLETE - All admin management features are fully functional!**

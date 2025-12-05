@@ -5,6 +5,7 @@ let Subject = require('../models/subject.model'); // We import the Subject model
 // Handles incoming HTTP GET requests on the /subjects/ URL
 router.route('/').get((req, res) => {
   Subject.find() // Mongoose method to get all Subjects from the database
+    .populate('department') // Populate department info
     .then(subjects => res.json(subjects)) // Return the subjects in JSON format
     .catch(err => res.status(400).json('Error: ' + err)); // Catch and return any errors
 });
@@ -28,6 +29,31 @@ router.route('/add').post((req, res) => {
 
   newSubject.save()
     .then(() => res.json('Subject added!'))
+    .catch(err => res.status(400).json('Error: ' + err));
+});
+
+// === UPDATE A SUBJECT ===
+router.route('/:id').put((req, res) => {
+  Subject.findById(req.params.id)
+    .then(subject => {
+      subject.name = req.body.name;
+      subject.code = req.body.code;
+      subject.lectures_per_week = Number(req.body.lectures_per_week);
+      if (req.body.subjectType) subject.subjectType = req.body.subjectType;
+      if (req.body.credits) subject.credits = Number(req.body.credits);
+      if (req.body.department) subject.department = req.body.department;
+
+      subject.save()
+        .then(() => res.json('Subject updated!'))
+        .catch(err => res.status(400).json('Error: ' + err));
+    })
+    .catch(err => res.status(400).json('Error: ' + err));
+});
+
+// === DELETE A SUBJECT ===
+router.route('/:id').delete((req, res) => {
+  Subject.findByIdAndDelete(req.params.id)
+    .then(() => res.json('Subject deleted.'))
     .catch(err => res.status(400).json('Error: ' + err));
 });
 

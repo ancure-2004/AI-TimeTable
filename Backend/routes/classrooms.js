@@ -23,4 +23,25 @@ router.route('/add').post((req, res) => {
     .catch(err => res.status(400).json('Error: ' + err));
 });
 
+// UPDATE A CLASSROOM
+router.route('/:id').put((req, res) => {
+  Classroom.findById(req.params.id)
+    .then(classroom => {
+      classroom.name = req.body.name;
+      classroom.capacity = Number(req.body.capacity);
+
+      classroom.save()
+        .then(() => res.json('Classroom updated!'))
+        .catch(err => res.status(400).json('Error: ' + err));
+    })
+    .catch(err => res.status(400).json('Error: ' + err));
+});
+
+// DELETE A CLASSROOM
+router.route('/:id').delete((req, res) => {
+  Classroom.findByIdAndDelete(req.params.id)
+    .then(() => res.json('Classroom deleted.'))
+    .catch(err => res.status(400).json('Error: ' + err));
+});
+
 module.exports = router;

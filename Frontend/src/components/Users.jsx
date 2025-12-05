@@ -5,12 +5,35 @@ import { useNavigate } from 'react-router-dom';
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createUserType, setCreateUserType] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [message, setMessage] = useState('');
   const navigate = useNavigate();
+
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    firstName: '',
+    lastName: '',
+    phone: '',
+    department: '',
+    specialization: '',
+    enrollmentNumber: '',
+    program: '',
+    semester: '',
+    section: ''
+  });
 
   useEffect(() => {
     fetchUsers();
+    fetchDepartments();
+    fetchPrograms();
   }, []);
 
   useEffect(() => {
@@ -33,16 +56,36 @@ const Users = () => {
     }
   };
 
+  const fetchDepartments = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/departments');
+      setDepartments(response.data);
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+    }
+  };
+
+  const fetchPrograms = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/programs');
+      setPrograms(response.data);
+    } catch (error) {
+      console.error('Error fetching programs:', error);
+    }
+  };
+
   const handleDeactivate = async (userId) => {
     if (!window.confirm('Are you sure you want to deactivate this user?')) return;
 
     try {
       await axios.put(`http://localhost:5000/auth/users/${userId}/deactivate`);
       fetchUsers();
-      alert('User deactivated successfully');
+      setMessage('User deactivated successfully');
+      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Error deactivating user:', error);
-      alert('Failed to deactivate user');
+      setMessage('Failed to deactivate user');
+      setTimeout(() => setMessage(''), 3000);
     }
   };
 
@@ -50,10 +93,12 @@ const Users = () => {
     try {
       await axios.put(`http://localhost:5000/auth/users/${userId}/activate`);
       fetchUsers();
-      alert('User activated successfully');
+      setMessage('User activated successfully');
+      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Error activating user:', error);
-      alert('Failed to activate user');
+      setMessage('Failed to activate user');
+      setTimeout(() => setMessage(''), 3000);
     }
   };
 
@@ -63,11 +108,133 @@ const Users = () => {
     try {
       await axios.delete(`http://localhost:5000/auth/users/${userId}`);
       fetchUsers();
-      alert('User deleted successfully');
+      setMessage('User deleted successfully');
+      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Error deleting user:', error);
-      alert('Failed to delete user');
+      setMessage('Failed to delete user');
+      setTimeout(() => setMessage(''), 3000);
     }
+  };
+
+  const openCreateModal = (userType) => {
+    setCreateUserType(userType);
+    setFormData({
+      email: '',
+      password: '',
+      firstName: '',
+      lastName: '',
+      phone: '',
+      department: '',
+      specialization: '',
+      enrollmentNumber: '',
+      program: '',
+      semester: '',
+      section: ''
+    });
+    setShowCreateModal(true);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setCreateUserType(null);
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const userData = {
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        role: createUserType
+      };
+
+      if (createUserType === 'teacher') {
+        userData.department = formData.department;
+        userData.specialization = formData.specialization;
+      } else if (createUserType === 'student') {
+        userData.enrollmentNumber = formData.enrollmentNumber;
+        userData.program = formData.program;
+        userData.semester = parseInt(formData.semester);
+        userData.section = formData.section;
+      }
+
+      await axios.post('http://localhost:5000/auth/register', userData);
+      fetchUsers();
+      closeCreateModal();
+      setMessage(`${createUserType === 'teacher' ? 'Teacher' : 'Student'} created successfully`);
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Error creating user:', error);
+      setMessage(error.response?.data?.error || 'Failed to create user');
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  const openEditModal = (user) => {
+    setEditingUser(user);
+    setFormData({
+      email: user.email,
+      password: '',
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone || '',
+      department: user.department || '',
+      specialization: user.specialization || '',
+      enrollmentNumber: user.enrollmentNumber || '',
+      program: user.program || '',
+      semester: user.semester || '',
+      section: user.section || ''
+    });
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setEditingUser(null);
+  };
+
+  const handleEditUser = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const updateData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+      };
+
+      if (editingUser.role === 'teacher') {
+        updateData.department = formData.department;
+        updateData.specialization = formData.specialization;
+      } else if (editingUser.role === 'student') {
+        updateData.enrollmentNumber = formData.enrollmentNumber;
+        updateData.program = formData.program;
+        updateData.semester = parseInt(formData.semester);
+        updateData.section = formData.section;
+      }
+
+      await axios.put(`http://localhost:5000/auth/users/${editingUser._id}`, updateData);
+      fetchUsers();
+      closeEditModal();
+      setMessage('User updated successfully');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      setMessage(error.response?.data?.error || 'Failed to update user');
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
   };
 
   const getRoleBadgeColor = (role) => {
@@ -89,7 +256,6 @@ const Users = () => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -102,13 +268,31 @@ const Users = () => {
               </button>
               <h1 className="text-xl font-bold text-gray-900">User Management</h1>
             </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => openCreateModal('teacher')}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              >
+                + Create Teacher
+              </button>
+              <button
+                onClick={() => openCreateModal('student')}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+              >
+                + Create Student
+              </button>
+            </div>
           </div>
         </div>
       </nav>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Filter Buttons */}
+        {message && (
+          <div className={`mb-4 p-4 rounded-md ${message.includes('Failed') || message.includes('error') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+            {message}
+          </div>
+        )}
+
         <div className="mb-6 flex space-x-2">
           <button
             onClick={() => setFilter('all')}
@@ -136,7 +320,6 @@ const Users = () => {
           </button>
         </div>
 
-        {/* Users Table */}
         <div className="bg-white shadow overflow-hidden sm:rounded-lg">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -200,6 +383,14 @@ const Users = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
+                      {user.role !== 'admin' && (
+                        <button
+                          onClick={() => openEditModal(user)}
+                          className="text-indigo-600 hover:text-indigo-900"
+                        >
+                          Edit
+                        </button>
+                      )}
                       {user.isActive ? (
                         <button
                           onClick={() => handleDeactivate(user._id)}
@@ -215,12 +406,14 @@ const Users = () => {
                           Activate
                         </button>
                       )}
-                      <button
-                        onClick={() => handleDelete(user._id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
+                      {user.role !== 'admin' && (
+                        <button
+                          onClick={() => handleDelete(user._id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -235,6 +428,355 @@ const Users = () => {
           </div>
         )}
       </div>
+
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
+                Create New {createUserType === 'teacher' ? 'Teacher' : 'Student'}
+              </h3>
+              <form onSubmit={handleCreateUser}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                  <input
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    required
+                    minLength="6"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input
+                    type="text"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                {createUserType === 'teacher' && (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                      <select
+                        name="department"
+                        value={formData.department}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Department</option>
+                        {departments.map((dept) => (
+                          <option key={dept._id} value={dept.code}>
+                            {dept.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
+                      <input
+                        type="text"
+                        name="specialization"
+                        value={formData.specialization}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {createUserType === 'student' && (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Enrollment Number *</label>
+                      <input
+                        type="text"
+                        name="enrollmentNumber"
+                        value={formData.enrollmentNumber}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Program *</label>
+                      <select
+                        name="program"
+                        value={formData.program}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Program</option>
+                        {programs.map((prog) => (
+                          <option key={prog._id} value={prog.code}>
+                            {prog.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Semester *</label>
+                      <input
+                        type="number"
+                        name="semester"
+                        value={formData.semester}
+                        onChange={handleInputChange}
+                        required
+                        min="1"
+                        max="8"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Section *</label>
+                      <input
+                        type="text"
+                        name="section"
+                        value={formData.section}
+                        onChange={handleInputChange}
+                        required
+                        maxLength="1"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeCreateModal}
+                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                  >
+                    Create
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
+                Edit {editingUser.role === 'teacher' ? 'Teacher' : 'Student'}
+              </h3>
+              <form onSubmit={handleEditUser}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email (Read-only)</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input
+                    type="text"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                {editingUser.role === 'teacher' && (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                      <select
+                        name="department"
+                        value={formData.department}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Department</option>
+                        {departments.map((dept) => (
+                          <option key={dept._id} value={dept.code}>
+                            {dept.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
+                      <input
+                        type="text"
+                        name="specialization"
+                        value={formData.specialization}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {editingUser.role === 'student' && (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Enrollment Number *</label>
+                      <input
+                        type="text"
+                        name="enrollmentNumber"
+                        value={formData.enrollmentNumber}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Program *</label>
+                      <select
+                        name="program"
+                        value={formData.program}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Program</option>
+                        {programs.map((prog) => (
+                          <option key={prog._id} value={prog.code}>
+                            {prog.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Semester *</label>
+                      <input
+                        type="number"
+                        name="semester"
+                        value={formData.semester}
+                        onChange={handleInputChange}
+                        required
+                        min="1"
+                        max="8"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Section *</label>
+                      <input
+                        type="text"
+                        name="section"
+                        value={formData.section}
+                        onChange={handleInputChange}
+                        required
+                        maxLength="1"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                  >
+                    Update
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

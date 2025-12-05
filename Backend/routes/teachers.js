@@ -18,4 +18,24 @@ router.route('/add').post((req, res) => {
     .catch(err => res.status(400).json('Error: ' + err));
 });
 
+// UPDATE A TEACHER
+router.route('/:id').put((req, res) => {
+  Teacher.findById(req.params.id)
+    .then(teacher => {
+      teacher.name = req.body.name;
+
+      teacher.save()
+        .then(() => res.json('Teacher updated!'))
+        .catch(err => res.status(400).json('Error: ' + err));
+    })
+    .catch(err => res.status(400).json('Error: ' + err));
+});
+
+// DELETE A TEACHER
+router.route('/:id').delete((req, res) => {
+  Teacher.findByIdAndDelete(req.params.id)
+    .then(() => res.json('Teacher deleted.'))
+    .catch(err => res.status(400).json('Error: ' + err));
+});
+
 module.exports = router;
