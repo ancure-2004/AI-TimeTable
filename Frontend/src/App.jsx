@@ -16,6 +16,8 @@ import Classes from './components/Classes';
 import AssignSubjects from './components/AssignSubjects';
 import GenerateTimetableNew from './components/GenerateTimetableNew';
 import ViewTimetables from './components/ViewTimetables';
+import StudentTimetable from './components/StudentTimetable';
+import TeacherTimetable from './components/TeacherTimetable';
 
 function App() {
   return (
@@ -134,6 +136,26 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <TimetableDisplay />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* Student Routes */}
+          <Route 
+            path="/student-timetable" 
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <StudentTimetable />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* Teacher Routes */}
+          <Route 
+            path="/teacher-timetable" 
+            element={
+              <ProtectedRoute allowedRoles={['teacher']}>
+                <TeacherTimetable />
               </ProtectedRoute>
             } 
           />

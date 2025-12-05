@@ -195,7 +195,7 @@ const Dashboard = () => {
               {isTeacher && (
                 <>
                   <button
-                    onClick={() => alert('My Timetable - Coming Soon')}
+                    onClick={() => navigate('/teacher-timetable')}
                     className="p-4 bg-indigo-50 rounded-lg hover:bg-indigo-100 text-left"
                   >
                     <div className="text-indigo-600 font-semibold mb-1">My Timetable</div>
@@ -203,11 +203,11 @@ const Dashboard = () => {
                   </button>
                   
                   <button
-                    onClick={() => alert('My Subjects - Coming Soon')}
+                    onClick={() => navigate('/teacher-timetable')}
                     className="p-4 bg-green-50 rounded-lg hover:bg-green-100 text-left"
                   >
-                    <div className="text-green-600 font-semibold mb-1">My Subjects</div>
-                    <div className="text-sm text-gray-600">Subjects you teach</div>
+                    <div className="text-green-600 font-semibold mb-1">My Classes</div>
+                    <div className="text-sm text-gray-600">Classes you teach</div>
                   </button>
                 </>
               )}
@@ -215,7 +215,7 @@ const Dashboard = () => {
               {isStudent && (
                 <>
                   <button
-                    onClick={() => alert('My Timetable - Coming Soon')}
+                    onClick={() => navigate('/student-timetable')}
                     className="p-4 bg-indigo-50 rounded-lg hover:bg-indigo-100 text-left"
                   >
                     <div className="text-indigo-600 font-semibold mb-1">My Timetable</div>
@@ -223,11 +223,11 @@ const Dashboard = () => {
                   </button>
                   
                   <button
-                    onClick={() => alert('My Courses - Coming Soon')}
+                    onClick={() => navigate('/student-timetable')}
                     className="p-4 bg-green-50 rounded-lg hover:bg-green-100 text-left"
                   >
-                    <div className="text-green-600 font-semibold mb-1">My Courses</div>
-                    <div className="text-sm text-gray-600">Enrolled courses</div>
+                    <div className="text-green-600 font-semibold mb-1">My Class</div>
+                    <div className="text-sm text-gray-600">View class details</div>
                   </button>
                 </>
               )}

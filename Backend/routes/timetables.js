@@ -43,15 +43,16 @@ router.post('/generate/:classId', async (req, res) => {
     // 3. Get all available classrooms
     const allClassrooms = await Classroom.find();
 
-    // 4. Prepare data for solver
-    const subjects = assignments.map(a => ({
-      name: a.subject.name,
-      code: a.subject.code,
-      lectures_per_week: a.subject.lectures_per_week
-    }));
-
-    const teachers = assignments.map(a => ({
-      name: a.teacher.name
+    // 4. Prepare data for solver with subject-teacher mappings
+    const subjectTeacherPairs = assignments.map(a => ({
+      subject: {
+        name: a.subject.name,
+        code: a.subject.code,
+        lectures_per_week: a.subject.lectures_per_week
+      },
+      teacher: {
+        name: a.teacher.name
+      }
     }));
 
     // Use assigned room if available, otherwise use all classrooms
@@ -60,8 +61,7 @@ router.post('/generate/:classId', async (req, res) => {
       : allClassrooms.map(c => ({ name: c.name, capacity: c.capacity }));
 
     const payload = {
-      subjects,
-      teachers,
+      subject_teacher_pairs: subjectTeacherPairs,
       classrooms
     };
 
@@ -189,6 +189,18 @@ router.get('/:id', async (req, res) => {
 router.get('/class/:classId', async (req, res) => {
   try {
     const timetables = await Timetable.find({ class: req.params.classId })
+      .populate({
+        path: 'class',
+        select: 'name code semester section',
+        populate: {
+          path: 'program',
+          select: 'name code',
+          populate: {
+            path: 'department',
+            select: 'name code'
+          }
+        }
+      })
       .populate('generatedBy', 'firstName lastName email')
       .sort({ createdAt: -1 });
     res.json(timetables);
@@ -247,15 +259,39 @@ router.get('/teacher/:teacherId', async (req, res) => {
   try {
     const { teacherId } = req.params;
 
+    // Get teacher's user record to get their name
+    const User = require('../models/user.model');
+    const teacherUser = await User.findById(teacherId);
+    
+    if (!teacherUser) {
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    const teacherFullName = `${teacherUser.firstName} ${teacherUser.lastName}`;
+
+    // Find teacher record by name
+    const Teacher = require('../models/teacher.model');
+    const teacherRecord = await Teacher.findOne({ name: teacherFullName });
+
+    if (!teacherRecord) {
+      return res.json({
+        teacher: teacherId,
+        classes: [],
+        timetables: [],
+        message: 'No classes assigned to this teacher'
+      });
+    }
+
     // Get all class-subject assignments for this teacher
-    const assignments = await ClassSubject.find({ teacher: teacherId })
+    const assignments = await ClassSubject.find({ teacher: teacherRecord._id })
       .populate('class', '_id name code semester section')
       .populate('subject', 'name code');
 
     if (assignments.length === 0) {
       return res.json({
         teacher: teacherId,
-        schedule: [],
+        classes: [],
+        timetables: [],
         message: 'No classes assigned to this teacher'
       });
     }
@@ -265,7 +301,18 @@ router.get('/teacher/:teacherId', async (req, res) => {
     const timetables = await Timetable.find({
       class: { $in: classIds },
       status: 'published'
-    }).populate('class', 'name code semester section');
+    }).populate({
+      path: 'class',
+      select: 'name code semester section',
+      populate: {
+        path: 'program',
+        select: 'name code',
+        populate: {
+          path: 'department',
+          select: 'name code'
+        }
+      }
+    });
 
     // Build teacher's combined schedule
     const teacherSchedule = {
@@ -280,6 +327,93 @@ router.get('/teacher/:teacherId', async (req, res) => {
     res.json(teacherSchedule);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching teacher timetable', error: error.message });
+  }
+});
+
+// Get student's timetable (their class timetable)
+router.get('/student/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    // Get student's user record
+    const User = require('../models/user.model');
+    const student = await User.findById(studentId);
+    
+    if (!student) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    if (student.role !== 'student') {
+      return res.status(400).json({ message: 'User is not a student' });
+    }
+
+    // Find the class based on student's program, semester, and section
+    // First, find the program by name or code
+    
+    const Program = require('../models/program.model');
+    const program = await Program.findOne(
+        { code: student.program },
+    );
+
+    console.log(program);
+
+    if (!program) {
+      return res.status(404).json({ 
+        message: 'Program not found for this student',
+        details: `No program found matching: ${student.program}`
+      });
+    }
+
+    // Find the class
+    const studentClass = await Class.findOne({
+      program: program._id,
+      semester: student.semester,
+      section: student.section
+    });
+
+    if (!studentClass) {
+      return res.status(404).json({ 
+        message: 'Program not found for this student',
+        details: {
+          program: student.program,
+          semester: student.semester,
+          section: student.section,
+          programId: program._id.toString(),
+          programName: program.name
+        }
+      });
+    }
+
+    // Get published timetable for this class
+    const timetable = await Timetable.findOne({
+      class: studentClass._id,
+      status: 'published'
+    }).populate({
+      path: 'class',
+      select: 'name code semester section',
+      populate: {
+        path: 'program',
+        select: 'name code',
+        populate: {
+          path: 'department',
+          select: 'name code'
+        }
+      }
+    }).sort({ createdAt: -1 });
+
+    if (!timetable) {
+      return res.status(404).json({ 
+        message: 'No published timetable found for your class' 
+      });
+    }
+
+    res.json({
+      studentId,
+      class: timetable.class,
+      timetable: timetable
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching student timetable', error: error.message });
   }
 });
 

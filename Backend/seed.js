@@ -126,7 +126,7 @@ connection.once('open', async () => {
 
     const students = [];
     let enrollmentCounter = 2024001;
-    const programsList = ['B.Tech Computer Science', 'B.Tech Electronics', 'BCA'];
+    const programsList = ['BTECH-CS', 'BTECH-ECE', 'BCA'];
     const sections = ['A', 'B'];
     
     for (let i = 0; i < studentNames.length; i++) {

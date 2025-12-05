@@ -14,13 +14,16 @@ class Subject(BaseModel):
 class Teacher(BaseModel):
     name: str
 
+class SubjectTeacherPair(BaseModel):
+    subject: Subject
+    teacher: Teacher
+
 class Classroom(BaseModel):
     name: str
     capacity: int
 
 class TimetableInput(BaseModel):
-    subjects: List[Subject]
-    teachers: List[Teacher]
+    subject_teacher_pairs: List[SubjectTeacherPair]
     classrooms: List[Classroom]
 
 # --- 2. The Main Solver Logic ---
@@ -34,28 +37,22 @@ def generate_timetable(data: TimetableInput):
     lunch_slot_index = 4 # Slot 4 is the 5th slot (0-indexed)
     
     # --- FEASIBILITY CHECK ---
-    total_lectures_needed = sum(s.lectures_per_week for s in data.subjects)
+    total_lectures_needed = sum(pair.subject.lectures_per_week for pair in data.subject_teacher_pairs)
     available_slots = num_days * (num_slots_per_day - 1)  # Minus lunch slot
-    num_teachers = len(data.teachers)
+    num_pairs = len(data.subject_teacher_pairs)
     num_classrooms = len(data.classrooms)
     
     # Basic validation
-    if num_teachers == 0:
+    if num_pairs == 0:
         return {
             "status": "error",
-            "message": "No teachers available. Please add at least one teacher."
+            "message": "No subject-teacher assignments available. Please assign subjects to the class first."
         }
     
     if num_classrooms == 0:
         return {
             "status": "error",
             "message": "No classrooms available. Please add at least one classroom."
-        }
-    
-    if len(data.subjects) == 0:
-        return {
-            "status": "error",
-            "message": "No subjects available. Please add at least one subject."
         }
     
     # Check if total lectures exceed available slots
@@ -66,40 +63,45 @@ def generate_timetable(data: TimetableInput):
         }
     
     # Warn if resources are tight
-    resource_capacity = min(num_teachers, num_classrooms) * available_slots
+    resource_capacity = num_classrooms * available_slots
     if total_lectures_needed > resource_capacity * 0.7:
-        print(f"Warning: High resource utilization. {total_lectures_needed} lectures with {num_teachers} teachers and {num_classrooms} rooms.")
+        print(f"Warning: High resource utilization. {total_lectures_needed} lectures with {num_classrooms} rooms.")
 
     # --- B. PREPARE THE DATA ---
-    all_subjects = data.subjects
-    all_teachers = data.teachers
+    all_pairs = data.subject_teacher_pairs
     all_classrooms = data.classrooms
+    
+    # Extract unique teachers for clash prevention
+    all_teachers = list(set(pair.teacher.name for pair in all_pairs))
 
     # --- C. CREATE THE CP-SAT MODEL ---
     model = cp_model.CpModel()
 
     # --- D. CREATE VARIABLES ---
     # schedule_vars[(subject_code, teacher_name, room_name, day, slot)] = BoolVar
+    # CRITICAL: Only create variables for valid subject-teacher pairs!
     schedule_vars = {}
     
-    for s in all_subjects:
-        for t in all_teachers:
-            for c in all_classrooms:
-                for d in range(num_days):
-                    for sl in range(num_slots_per_day):
-                        schedule_vars[(s.code, t.name, c.name, d, sl)] = model.NewBoolVar(
-                            f"schedule_{s.code}_{t.name}_{c.name}_{d}_{sl}"
-                        )
+    for pair in all_pairs:
+        s_code = pair.subject.code
+        t_name = pair.teacher.name
+        for c in all_classrooms:
+            for d in range(num_days):
+                for sl in range(num_slots_per_day):
+                    schedule_vars[(s_code, t_name, c.name, d, sl)] = model.NewBoolVar(
+                        f"schedule_{s_code}_{t_name}_{c.name}_{d}_{sl}"
+                    )
 
     # --- E. DEFINE THE CONSTRAINTS (THE RULES) ---
 
     # Rule 1: Lecture Frequency
-    # A subject must be taught exactly `lectures_per_week` times across the week.
-    for s in all_subjects:
+    # Each subject must be taught exactly `lectures_per_week` times by ITS assigned teacher
+    for pair in all_pairs:
+        s = pair.subject
+        t = pair.teacher
         model.Add(
             sum(
                 schedule_vars[(s.code, t.name, c.name, d, sl)]
-                for t in all_teachers
                 for c in all_classrooms
                 for d in range(num_days)
                 for sl in range(num_slots_per_day)
@@ -107,84 +109,85 @@ def generate_timetable(data: TimetableInput):
         )
 
     # Rule 2: Teacher Clash Prevention
-    # A teacher can be in at most one place per slot.
-    for t in all_teachers:
+    # A teacher can be in at most one place per slot (teaching any subject)
+    for t_name in all_teachers:
         for d in range(num_days):
             for sl in range(num_slots_per_day):
-                model.Add(
-                    sum(
-                        schedule_vars[(s.code, t.name, c.name, d, sl)]
-                        for s in all_subjects
-                        for c in all_classrooms
-                    ) <= 1
-                )
+                # Sum all subjects this teacher teaches
+                relevant_vars = [
+                    schedule_vars[(pair.subject.code, t_name, c.name, d, sl)]
+                    for pair in all_pairs
+                    if pair.teacher.name == t_name
+                    for c in all_classrooms
+                ]
+                if relevant_vars:  # Only add constraint if teacher has assignments
+                    model.Add(sum(relevant_vars) <= 1)
 
     # Rule 3: Classroom Clash Prevention
-    # A classroom can host at most one class per slot.
+    # A classroom can host at most one class per slot
     for c in all_classrooms:
         for d in range(num_days):
             for sl in range(num_slots_per_day):
-                model.Add(
-                    sum(
-                        schedule_vars[(s.code, t.name, c.name, d, sl)]
-                        for s in all_subjects
-                        for t in all_teachers
-                    ) <= 1
-                )
+                # Sum all subject-teacher pairs that could use this room
+                relevant_vars = [
+                    schedule_vars[(pair.subject.code, pair.teacher.name, c.name, d, sl)]
+                    for pair in all_pairs
+                ]
+                model.Add(sum(relevant_vars) <= 1)
 
     # Rule 4: Lunch Break
-    # No classes allowed in the lunch slot (index 4).
-    for s in all_subjects:
-        for t in all_teachers:
-            for c in all_classrooms:
-                for d in range(num_days):
-                    model.Add(
-                        schedule_vars[(s.code, t.name, c.name, d, lunch_slot_index)] == 0
-                    )
+    # No classes allowed in the lunch slot (index 4)
+    for pair in all_pairs:
+        for c in all_classrooms:
+            for d in range(num_days):
+                model.Add(
+                    schedule_vars[(pair.subject.code, pair.teacher.name, c.name, d, lunch_slot_index)] == 0
+                )
 
     # Rule 5: Teacher Cool-Down (RELAXED - Allow up to 2 consecutive classes)
-    # Teachers can teach max 2 consecutive slots, then need a break
     
     # 5a. Create helper variables: is_busy[teacher, day, slot]
     is_teacher_busy = {}
-    for t in all_teachers:
+    for t_name in all_teachers:
         for d in range(num_days):
             for sl in range(num_slots_per_day):
-                # Variable is True if teacher is teaching ANY class in this slot
-                is_busy = model.NewBoolVar(f"busy_{t.name}_{d}_{sl}")
-                is_teacher_busy[(t.name, d, sl)] = is_busy
+                is_busy = model.NewBoolVar(f"busy_{t_name}_{d}_{sl}")
+                is_teacher_busy[(t_name, d, sl)] = is_busy
                 
-                # Calculate if teacher is actually teaching in this slot
-                # The sum will be either 0 (free) or 1 (busy) because of Rule 2
-                classes_in_slot = sum(
-                    schedule_vars[(s.code, t.name, c.name, d, sl)]
-                    for s in all_subjects
+                # Calculate if teacher is teaching any subject in this slot
+                relevant_vars = [
+                    schedule_vars[(pair.subject.code, t_name, c.name, d, sl)]
+                    for pair in all_pairs
+                    if pair.teacher.name == t_name
                     for c in all_classrooms
-                )
+                ]
                 
-                # If sum == 1, is_busy MUST be True
-                model.Add(classes_in_slot == 1).OnlyEnforceIf(is_busy)
-                # If sum == 0, is_busy MUST be False
-                model.Add(classes_in_slot == 0).OnlyEnforceIf(is_busy.Not())
+                if relevant_vars:
+                    classes_in_slot = sum(relevant_vars)
+                    
+                    # If sum == 1, is_busy MUST be True
+                    model.Add(classes_in_slot == 1).OnlyEnforceIf(is_busy)
+                    # If sum == 0, is_busy MUST be False
+                    model.Add(classes_in_slot == 0).OnlyEnforceIf(is_busy.Not())
+                else:
+                    # Teacher has no assignments, always free
+                    model.Add(is_busy == 0)
 
-    # 5b. Apply the restriction (RELAXED)
-    # No more than 2 consecutive classes for any teacher
-    for t in all_teachers:
+    # 5b. Apply the restriction - No more than 2 consecutive classes
+    for t_name in all_teachers:
         for d in range(num_days):
-            for sl in range(num_slots_per_day - 2):  # Check 3-slot windows
-                busy_slot1 = is_teacher_busy[(t.name, d, sl)]
-                busy_slot2 = is_teacher_busy[(t.name, d, sl + 1)]
-                busy_slot3 = is_teacher_busy[(t.name, d, sl + 2)]
+            for sl in range(num_slots_per_day - 2):
+                busy_slot1 = is_teacher_busy[(t_name, d, sl)]
+                busy_slot2 = is_teacher_busy[(t_name, d, sl + 1)]
+                busy_slot3 = is_teacher_busy[(t_name, d, sl + 2)]
                 
                 # Cannot have 3 consecutive classes
-                # If slots 1 and 2 are busy, slot 3 must be free
                 model.AddBoolOr([busy_slot1.Not(), busy_slot2.Not(), busy_slot3.Not()])
-
 
     # --- F. SOLVE THE MODEL ---
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 30.0  # Increased timeout
-    solver.parameters.log_search_progress = False  # Disable verbose logging
+    solver.parameters.max_time_in_seconds = 30.0
+    solver.parameters.log_search_progress = False
     status = solver.Solve(model)
     
     print(f"Solver status: {solver.StatusName(status)}")
@@ -192,27 +195,28 @@ def generate_timetable(data: TimetableInput):
 
     # --- G. RETURN THE RESULT ---
     if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-        # Reconstruct the schedule from the solver's variables
+        # Reconstruct the schedule
         solution = []
         for d in range(num_days):
             day_schedule = []
             for sl in range(num_slots_per_day):
                 slot_info = []
                 
-                # Check for Lunch (Corrected logic: check SLOT index, not DAY index)
+                # Check for Lunch
                 if sl == lunch_slot_index:
                     slot_info.append({"event": "Lunch Break"})
                 
-                # Check for Classes
-                for s in all_subjects:
-                    for t in all_teachers:
-                        for c in all_classrooms:
-                            if solver.Value(schedule_vars[(s.code, t.name, c.name, d, sl)]) == 1:
-                                slot_info.append({
-                                    "subject": s.name,
-                                    "teacher": t.name,
-                                    "classroom": c.name
-                                })
+                # Check for Classes - only iterate over valid pairs
+                for pair in all_pairs:
+                    s = pair.subject
+                    t = pair.teacher
+                    for c in all_classrooms:
+                        if solver.Value(schedule_vars[(s.code, t.name, c.name, d, sl)]) == 1:
+                            slot_info.append({
+                                "subject": s.name,
+                                "teacher": t.name,
+                                "classroom": c.name
+                            })
                 day_schedule.append(slot_info)
             solution.append(day_schedule)
         
@@ -226,7 +230,7 @@ def generate_timetable(data: TimetableInput):
         error_details = {
             "total_lectures_needed": total_lectures_needed,
             "available_slots": available_slots,
-            "num_teachers": num_teachers,
+            "num_subject_teacher_pairs": num_pairs,
             "num_classrooms": num_classrooms,
             "solver_status": solver.StatusName(status)
         }
@@ -234,9 +238,9 @@ def generate_timetable(data: TimetableInput):
         # Determine specific issue
         if status == cp_model.INFEASIBLE:
             if total_lectures_needed > available_slots * 0.8:
-                message = f"Schedule is over-constrained. You need {total_lectures_needed} lecture slots but only {available_slots} available (after lunch break). Consider: 1) Reducing lectures_per_week for some subjects, 2) Adding more teachers, or 3) Adding more classrooms."
+                message = f"Schedule is over-constrained. You need {total_lectures_needed} lecture slots but only {available_slots} available (after lunch break). Consider reducing lectures_per_week for some subjects."
             else:
-                message = f"Cannot create a valid schedule with current constraints. Try: 1) Adding more teachers ({num_teachers} available), 2) Adding more classrooms ({num_classrooms} available), or 3) Reducing the lectures_per_week requirement."
+                message = f"Cannot create a valid schedule with current constraints. Try adding more classrooms ({num_classrooms} available) or reducing the lectures_per_week requirement."
         elif status == cp_model.MODEL_INVALID:
             message = "Internal error: The scheduling model is invalid. Please contact support."
         else:

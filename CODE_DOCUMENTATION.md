@@ -73,9 +73,10 @@ Course information
 - class (ref), subject (ref), teacher (ref)
 - preferredRoom (ref)
 
-**Why Critical:** This model solves the "62 slots needed but only 35 available" problem by:
-- Linking specific subjects to specific classes
-- Assigning one teacher per class-subject combination
+**Why Critical:** This model is the key to proper timetable generation:
+- Links specific subjects to specific classes
+- Assigns the CORRECT teacher to each subject-class combination
+- Ensures teachers only teach subjects they're assigned to (fixes wrong teacher bug)
 - Each class only schedules ITS assigned subjects (not all subjects in database)
 
 ### 7. Teacher Model
@@ -132,7 +133,7 @@ Stores generated timetables per class
 ### Class Subjects (`/class-subjects`)
 **KEY ROUTE** - Manages subject assignments to classes
 - GET `/class/:classId` - Get all subjects assigned to a class
-- POST `/assign` - Assign subject to class with teacher
+- POST `/add` - Assign subject to class with teacher (critical for correct teacher mapping)
 - DELETE `/:id` - Remove assignment
 - PUT `/:id` - Update assignment
 
@@ -162,46 +163,114 @@ Stores generated timetables per class
 
 ## Timetable Generation Flow
 
-### Old System (Deprecated)
-POST `/generate-timetable` - Tried to fit ALL subjects in ONE timetable
-- Problem: 62 slots needed > 35 available = FAILURE
+### Critical Fix: Subject-Teacher Mapping
 
-### New System (Current)
-POST `/timetables/generate/:classId` - Generates per-class timetable
+**The Problem (Before Fix):**
+- Backend sent subjects and teachers as separate arrays to solver
+- Solver created variables for ALL combinations (subject × teacher)
+- Solver randomly assigned teachers to subjects (e.g., Deepak Shah teaching Discrete Math)
+- Result: Teachers teaching subjects they were never assigned to
 
-**Flow:**
-1. Admin assigns subjects to class (via ClassSubject model)
-2. Each subject gets a specific teacher assigned
-3. Generate button triggers `/timetables/generate/:classId`
-4. Backend fetches ONLY subjects assigned to that class
-5. Solver generates timetable with ~20-30 slots (fits in 35 available)
-6. Timetable saved to database with 'draft' status
-7. Admin can preview, then publish
+**The Solution (After Fix):**
+- Backend now sends `subject_teacher_pairs` array
+- Each pair explicitly links a subject with its assigned teacher
+- Solver only creates variables for valid pairs
+- Solver enforces: subject X can ONLY be taught by teacher Y
+- Result: Teachers only teach their assigned subjects ✅
 
-**Why It Works:**
-- Each class has 6-8 subjects (not all 20+ in database)
-- 6 subjects × 4 lectures = 24 slots < 35 available ✓
-- Each class gets independent timetable
-- No conflicts between classes
+### Current Flow (POST `/timetables/generate/:classId`)
+
+1. **Backend fetches class-subject assignments:**
+   - Queries `ClassSubject.find({ class: classId })`
+   - Gets all subjects assigned to this class WITH their assigned teachers
+   - Example: "Cloud Computing" → Teacher: "Kavita Nair"
+
+2. **Backend prepares payload:**
+   ```javascript
+   const subjectTeacherPairs = assignments.map(a => ({
+     subject: {
+       name: a.subject.name,
+       code: a.subject.code,
+       lectures_per_week: a.subject.lectures_per_week
+     },
+     teacher: {
+       name: a.teacher.name
+     }
+   }));
+   ```
+
+3. **Solver creates variables only for valid pairs:**
+   - `schedule_vars[(subject_code, teacher_name, room, day, slot)]`
+   - If "Cloud Computing" is assigned to "Kavita Nair", only creates variables with that pair
+   - Never creates "Cloud Computing" + "Deepak Shah" variable
+
+4. **Solver enforces constraints:**
+   - Rule 1: Each subject taught exactly `lectures_per_week` times BY its assigned teacher
+   - Rule 2: Teacher clash prevention (teacher in one place per slot)
+   - Rule 3: Room clash prevention
+   - Rule 4: Lunch break (slot 4)
+   - Rule 5: Max 2 consecutive classes per teacher
+
+5. **Result:**
+   - Timetable where teachers only teach their assigned subjects
+   - No more wrong teacher assignments
+   - Full constraint satisfaction
 
 ---
 
-## Python Solver Constraints
+## Python Solver Details
+
+### Input Format (New)
+```python
+class SubjectTeacherPair(BaseModel):
+    subject: Subject  # {name, code, lectures_per_week}
+    teacher: Teacher  # {name}
+
+class TimetableInput(BaseModel):
+    subject_teacher_pairs: List[SubjectTeacherPair]  # ✅ Paired data
+    classrooms: List[Classroom]
+```
+
+### Constraint Implementation
+
+**Rule 1: Lecture Frequency (Fixed)**
+```python
+for pair in all_pairs:
+    s = pair.subject
+    t = pair.teacher
+    model.Add(
+        sum(schedule_vars[(s.code, t.name, c.name, d, sl)]
+            for c in all_classrooms
+            for d in range(num_days)
+            for sl in range(num_slots_per_day)
+        ) == s.lectures_per_week
+    )
+```
+- Subject MUST be taught by ITS assigned teacher
+- No other teacher can teach this subject
+
+**Rule 2: Teacher Clash Prevention (Fixed)**
+```python
+for t_name in all_teachers:
+    for d in range(num_days):
+        for sl in range(num_slots_per_day):
+            relevant_vars = [
+                schedule_vars[(pair.subject.code, t_name, c.name, d, sl)]
+                for pair in all_pairs
+                if pair.teacher.name == t_name  # ✅ Only this teacher's subjects
+                for c in all_classrooms
+            ]
+            if relevant_vars:
+                model.Add(sum(relevant_vars) <= 1)
+```
+- Teacher can only be in one place per slot
+- But only considering subjects they're assigned to teach
 
 ### Configuration
 - 5 days (Mon-Fri)
 - 8 slots per day (09:00-17:00)
 - Slot 4 (13:00-14:00) = Lunch break
-
-### Constraints
-1. **Lecture Frequency:** Subject scheduled exactly `lectures_per_week` times
-2. **Teacher Clash:** Teacher in only one place per slot
-3. **Room Clash:** Room hosts only one class per slot
-4. **Lunch Break:** No classes at slot 4
-5. **Teacher Cool-down:** Prevents 3+ consecutive classes (allows 2 consecutive)
-
-### Solver Timeout
-- 30 seconds (with 35s backend timeout for buffer)
+- Solver timeout: 30 seconds
 
 ---
 
@@ -211,61 +280,56 @@ POST `/timetables/generate/:classId` - Generates per-class timetable
 - **Login/Register** - Authentication
 - **Dashboard** - Role-based home page
 - **Departments/Programs/Classes** - Academic structure management
-- **AssignSubjects** - Assign subjects to classes with teachers
+- **AssignSubjects** - Assign subjects to classes with teachers (CRITICAL for correct mapping)
 - **GenerateTimetableNew** - Generate class-specific timetables
 - **ViewTimetables** - View all generated timetables
-- **TimetableDisplay** - Display individual timetable (OLD - still exists)
+- **TimetableDisplay** - Display individual timetable
+
+---
+
+## Known Issues & Fixes
+
+### ✅ FIXED: Wrong Teacher Teaching Subject
+**Issue:** Teachers appearing in timetable teaching subjects they weren't assigned to.
+- Example: Deepak Shah teaching "Discrete Mathematics" when Kavita Nair was assigned
+
+**Root Cause:** 
+- Solver received subjects and teachers as separate arrays
+- Created variables for all possible combinations
+- No constraint linking specific subject to specific teacher
+
+**Fix Applied:**
+- Changed data structure from separate arrays to `subject_teacher_pairs`
+- Solver now only creates variables for valid pairs
+- Constraint Rule 1 enforces correct teacher for each subject
+- **Status:** ✅ FIXED in both `timetables.js` and `main.py`
+
+### Issue 2: Timetable Display Shows Only Semester (Not Fixed Yet)
+**Problem:** In ViewTimetables, cards show only "Semester X" without full context.
+
+**Root Cause:** Missing nested population in timetable queries.
+
+**Solution Needed:** Populate class → program → department in queries.
 
 ---
 
 ## Seed Data
 
-### Users
-- 1 Admin (admin@college.edu / admin123)
-- 15 Teachers (various departments)
-- 40 Students (distributed across programs/semesters)
+### Current Seed (`seed.js`)
+- 1 Admin, 15 Teachers, 40 Students
+- 4 Departments, 6 Programs, 10 Classes
+- 22 Subjects, 15 Classrooms, 15 Teachers
+- **59 ClassSubject assignments (subject-class-teacher mappings)**
 
-### Academic Data
-- Subjects: 22 subjects (theory, labs, mathematics, etc.)
-- Teachers: 15 teacher records (matches User accounts)
-- Classrooms: 15 rooms (theory rooms + labs)
+### Assignment Examples:
+```javascript
+// B.Tech CS - Sem 3 - Section A
+{ class: "BTECH-CS-3A", subject: "Data Structures", teacher: "Kavita Nair" }
+{ class: "BTECH-CS-3A", subject: "Cloud Computing", teacher: "Arun Pillai" }
+{ class: "BTECH-CS-3A", subject: "Database Lab", teacher: "Priya Sharma" }
+```
 
-### Missing in Seed
-- ❌ No departments
-- ❌ No programs
-- ❌ No classes
-- ❌ No class-subject assignments
-
-**Need to add:** Department/Program/Class seed data + ClassSubject assignments
-
----
-
-## Known Issues
-
-### Issue 1: Timetable Display Shows Only Semester
-**Problem:** In ViewTimetables, each timetable card shows only "Semester X" without department/program/class info.
-
-**Root Cause:** Class model lacks program population in queries
-
-**Solution:** Populate program in timetable queries, display full path: "B.Tech CS - Semester 3 - Section A"
-
-### Issue 2: Published Timetable Goes Blank
-**Problem:** After publishing timetable, clicking on it shows blank page.
-
-**Root Cause:** Frontend doesn't handle published status properly or missing data in populated fields
-
-**Solution:** Ensure all refs are properly populated and frontend handles null values
-
-### Issue 3: No Seed Data for New Models
-**Problem:** Department, Program, Class models exist but no seed data.
-
-**Result:** Admin must manually create entire academic structure before generating timetables.
-
-**Solution:** Add comprehensive seed data with:
-- 3-4 departments (CS, ECE, Mechanical, etc.)
-- 6-8 programs (B.Tech CS, M.Tech AI, BCA, etc.)
-- 10-15 classes (different semesters/sections)
-- 50-100 class-subject assignments (connect classes → subjects → teachers)
+**Why This Matters:** These assignments ensure correct teacher-subject mapping in timetables.
 
 ---
 
@@ -282,33 +346,138 @@ JWT_SECRET=your_jwt_secret_key_here
 
 ## How to Run
 
-### Backend
+### 1. Seed Database (First Time Only)
+```bash
+cd Backend
+node seed.js
+```
+- Creates 59 subject-class-teacher assignments
+- Ensures correct teacher mappings for timetable generation
+
+### 2. Start Backend
 ```bash
 cd Backend
 npm install
 npm run dev
 ```
 
-### Solver Service
+### 3. Start Solver Service
+**IMPORTANT: Must restart after any code changes!**
 ```bash
 cd Solver-service
 pip install fastapi uvicorn ortools pydantic
 uvicorn main:app --reload
 ```
 
-### Frontend
+### 4. Start Frontend
 ```bash
 cd Frontend
 npm install
 npm run dev
 ```
 
-### Seed Database
-```bash
-cd Backend
-node seed.js
+---
+
+## Testing the Fix
+
+### Verify Correct Teacher Assignment:
+
+1. Login as admin (admin@college.edu / admin123)
+
+2. Go to "Assign Subjects" page
+   - Select a class (e.g., "B.Tech CS - Sem 3 - Section A")
+   - View assigned subjects and their teachers
+   - Note which teacher is assigned to each subject
+
+3. Go to "Generate Timetable"
+   - Select the same class
+   - Click "Generate Timetable"
+   - Wait for generation (~5-10 seconds)
+
+4. View generated timetable
+   - Check each subject in the timetable
+   - Verify teacher name matches the assignment from step 2
+   - Example: "Cloud Computing" should show "Arun Pillai" (not "Deepak Shah")
+
+5. Success criteria:
+   - ✅ Each subject taught by correct assigned teacher
+   - ✅ No teachers teaching unassigned subjects
+   - ✅ All constraints satisfied (no clashes, lunch break, etc.)
+
+---
+
+## API Endpoints
+
+### Student Timetable Endpoint
+
+**GET** `/timetables/student/:studentId`
+
+**Purpose:** Retrieve the timetable for a specific student based on their class.
+
+**How it Works:**
+1. Fetches student's user record by ID
+2. Extracts student's program, semester, and section
+3. Finds matching program in database (by name OR code)
+4. Finds the class matching program + semester + section
+5. Returns the published timetable for that class
+
+**Recent Fix (Dec 5, 2025):**
+- **Issue:** Students got "Program not found" error even with published timetables
+- **Root Cause:** Query only searched by `program.name`, but student might have `program.code` stored
+- **Solution:** Updated to search using `$or` operator for both name AND code:
+
+```javascript
+const program = await Program.findOne({
+  $or: [
+    { name: student.program },  // e.g., "Bachelor of Technology in Computer Science"
+    { code: student.program }   // e.g., "BTECH-CS"
+  ]
+});
+```
+
+**Response Structure:**
+```json
+{
+  "studentId": "student_id_here",
+  "class": {
+    "_id": "class_id",
+    "name": "B.Tech CS - Sem 3 - Section A",
+    "code": "BTECH-CS-3A",
+    "semester": 3,
+    "section": "A",
+    "program": {
+      "name": "Bachelor of Technology in Computer Science",
+      "code": "BTECH-CS",
+      "department": {...}
+    }
+  },
+  "timetable": {
+    "_id": "timetable_id",
+    "schedule": {...},
+    "status": "published",
+    "academicYear": "2025"
+  }
+}
+```
+
+**Error Responses:**
+- 404: Student not found
+- 400: User is not a student
+- 404: Program not found (with details showing what was searched)
+- 404: No class found for program/semester/section combination
+- 404: No published timetable found for the class
+
+**Usage in Frontend:**
+```javascript
+// StudentTimetable.jsx
+const response = await fetch(`/api/timetables/student/${userId}`);
+const data = await response.json();
+// Display timetable from data.timetable.schedule
 ```
 
 ---
 
-**Last Updated:** December 4, 2025
+**Last Updated:** December 5, 2025
+**Recent Fixes:** 
+1. Subject-Teacher mapping enforced in solver to prevent wrong teacher assignments
+2. Student timetable endpoint now searches program by both name and code
