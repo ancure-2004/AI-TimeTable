@@ -16,6 +16,7 @@ import Classes from './components/Classes';
 import AssignSubjects from './components/AssignSubjects';
 import GenerateTimetableNew from './components/GenerateTimetableNew';
 import ViewTimetables from './components/ViewTimetables';
+import EditTimetable from './components/EditTimetable';
 import StudentTimetable from './components/StudentTimetable';
 import TeacherTimetable from './components/TeacherTimetable';
 
@@ -126,6 +127,15 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <ViewTimetables />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="/edit-timetable/:id" 
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <EditTimetable />
               </ProtectedRoute>
             } 
           />

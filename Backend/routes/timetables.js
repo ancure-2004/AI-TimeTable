@@ -417,4 +417,301 @@ router.get('/student/:studentId', async (req, res) => {
   }
 });
 
+// ============================================
+// PHASE 6: TIMETABLE EDITING ROUTES
+// ============================================
+
+// Validate slot change for conflicts
+router.post('/:id/validate-slot', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { day, slot, proposedData } = req.body;
+
+    const timetable = await Timetable.findById(id)
+      .populate('class', '_id name semester');
+
+    if (!timetable) {
+      return res.status(404).json({ message: 'Timetable not found' });
+    }
+
+    const conflicts = [];
+
+    // If it's a free slot or event, no conflict checking needed
+    if (!proposedData.subject || !proposedData.teacher) {
+      return res.json({ valid: true, conflicts: [] });
+    }
+
+    // Check 1: Lunch break (slot 4 = 13:00-14:00)
+    if (slot === 4) {
+      conflicts.push({
+        type: 'lunch_break',
+        message: 'Slot 4 (13:00-14:00) is reserved for lunch break'
+      });
+    }
+
+    // Check 2: Teacher availability - Check if teacher is teaching elsewhere at this time
+    // Get all published timetables except the current one being edited
+    const otherTimetables = await Timetable.find({
+      _id: { $ne: id },
+      status: { $in: ['published', 'draft'] }
+    }).populate('class', 'name code');
+
+    for (const tt of otherTimetables) {
+      const slotContent = tt.schedule[day]?.[slot];
+      if (slotContent && slotContent.length > 0) {
+        for (const entry of slotContent) {
+          if (entry.teacher === proposedData.teacher && !entry.event) {
+            conflicts.push({
+              type: 'teacher_clash',
+              message: `${proposedData.teacher} is already teaching ${entry.subject} in ${tt.class.name} at this time`,
+              conflictingClass: tt.class.name
+            });
+          }
+        }
+      }
+    }
+
+    // Check 3: Room availability - Check if room is being used elsewhere
+    for (const tt of otherTimetables) {
+      const slotContent = tt.schedule[day]?.[slot];
+      if (slotContent && slotContent.length > 0) {
+        for (const entry of slotContent) {
+          if (entry.classroom === proposedData.classroom && !entry.event) {
+            conflicts.push({
+              type: 'room_clash',
+              message: `${proposedData.classroom} is already booked for ${entry.subject} (${tt.class.name}) at this time`,
+              conflictingClass: tt.class.name
+            });
+          }
+        }
+      }
+    }
+
+    // Check 4: Teacher cooldown - Check if teacher has too many consecutive classes
+    // Count consecutive classes for this teacher in the current timetable
+    let consecutiveCount = 0;
+    const daySchedule = timetable.schedule[day];
+    
+    // Check slots before
+    for (let i = slot - 1; i >= 0; i--) {
+      const slotContent = daySchedule[i];
+      if (slotContent && slotContent.length > 0) {
+        const hasTeacher = slotContent.some(entry => entry.teacher === proposedData.teacher);
+        if (hasTeacher) {
+          consecutiveCount++;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    // Check slots after
+    for (let i = slot + 1; i < daySchedule.length; i++) {
+      const slotContent = daySchedule[i];
+      if (slotContent && slotContent.length > 0) {
+        const hasTeacher = slotContent.some(entry => entry.teacher === proposedData.teacher);
+        if (hasTeacher) {
+          consecutiveCount++;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    // If adding this slot would make 3+ consecutive classes, warn
+    if (consecutiveCount >= 2) {
+      conflicts.push({
+        type: 'teacher_cooldown_warning',
+        message: `${proposedData.teacher} will have ${consecutiveCount + 1} consecutive classes. Consider adding a break.`,
+        severity: 'warning'
+      });
+    }
+
+    // Check 5: Verify subject-teacher mapping
+    // Get class-subject assignments for this class
+    const classId = timetable.class._id;
+    const Teacher = require('../models/teacher.model');
+    const Subject = require('../models/subject.model');
+    
+    const subject = await Subject.findOne({ name: proposedData.subject });
+    const teacher = await Teacher.findOne({ name: proposedData.teacher });
+
+    if (subject && teacher) {
+      const assignment = await ClassSubject.findOne({
+        class: classId,
+        subject: subject._id,
+        teacher: teacher._id
+      });
+
+      if (!assignment) {
+        conflicts.push({
+          type: 'invalid_teacher',
+          message: `${proposedData.teacher} is not assigned to teach ${proposedData.subject} for this class`
+        });
+      }
+    }
+
+    const valid = conflicts.filter(c => c.severity !== 'warning').length === 0;
+
+    res.json({
+      valid,
+      conflicts,
+      message: valid ? 'No conflicts detected' : 'Conflicts detected'
+    });
+
+  } catch (error) {
+    console.error('Error validating slot:', error);
+    res.status(500).json({ message: 'Error validating slot', error: error.message });
+  }
+});
+
+// Save edited timetable
+router.put('/:id/edit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { schedule, changes, userId } = req.body;
+
+    const timetable = await Timetable.findById(id);
+
+    if (!timetable) {
+      return res.status(404).json({ message: 'Timetable not found' });
+    }
+
+    // Save current version to history before making changes
+    if (!timetable.editHistory) {
+      timetable.editHistory = [];
+    }
+
+    // Save current state as a version
+    timetable.editHistory.push({
+      versionNumber: (timetable.currentVersion || 1),
+      timestamp: new Date(),
+      editedBy: userId,
+      changeDescription: changes || 'Manual edit',
+      scheduleSnapshot: JSON.parse(JSON.stringify(timetable.schedule))
+    });
+
+    // Update timetable
+    timetable.schedule = schedule;
+    timetable.isEdited = true;
+    timetable.lastEditedAt = new Date();
+    timetable.lastEditedBy = userId;
+    timetable.currentVersion = (timetable.currentVersion || 1) + 1;
+
+    await timetable.save();
+
+    // Populate and return
+    const updatedTimetable = await Timetable.findById(id)
+      .populate({
+        path: 'class',
+        select: 'name code semester section',
+        populate: {
+          path: 'program',
+          select: 'name code',
+          populate: {
+            path: 'department',
+            select: 'name code'
+          }
+        }
+      })
+      .populate('generatedBy', 'firstName lastName email')
+      .populate('lastEditedBy', 'firstName lastName email');
+
+    res.json({
+      message: 'Timetable updated successfully',
+      timetable: updatedTimetable
+    });
+
+  } catch (error) {
+    console.error('Error saving edited timetable:', error);
+    res.status(500).json({ message: 'Error saving timetable', error: error.message });
+  }
+});
+
+// Get edit history for a timetable
+router.get('/:id/history', async (req, res) => {
+  try {
+    const timetable = await Timetable.findById(req.params.id)
+      .populate('editHistory.editedBy', 'firstName lastName email');
+
+    if (!timetable) {
+      return res.status(404).json({ message: 'Timetable not found' });
+    }
+
+    res.json({
+      currentVersion: timetable.currentVersion || 1,
+      history: timetable.editHistory || []
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching history', error: error.message });
+  }
+});
+
+// Revert to a specific version
+router.post('/:id/revert/:versionNumber', async (req, res) => {
+  try {
+    const { id, versionNumber } = req.params;
+    const { userId } = req.body;
+
+    const timetable = await Timetable.findById(id);
+
+    if (!timetable) {
+      return res.status(404).json({ message: 'Timetable not found' });
+    }
+
+    // Find the version to revert to
+    const version = timetable.editHistory?.find(
+      h => h.versionNumber === parseInt(versionNumber)
+    );
+
+    if (!version) {
+      return res.status(404).json({ message: 'Version not found' });
+    }
+
+    // Save current state before reverting
+    timetable.editHistory.push({
+      versionNumber: timetable.currentVersion || 1,
+      timestamp: new Date(),
+      editedBy: userId,
+      changeDescription: `Reverted to version ${versionNumber}`,
+      scheduleSnapshot: JSON.parse(JSON.stringify(timetable.schedule))
+    });
+
+    // Revert to the old schedule
+    timetable.schedule = version.scheduleSnapshot;
+    timetable.currentVersion = (timetable.currentVersion || 1) + 1;
+    timetable.lastEditedAt = new Date();
+    timetable.lastEditedBy = userId;
+
+    await timetable.save();
+
+    const updatedTimetable = await Timetable.findById(id)
+      .populate({
+        path: 'class',
+        select: 'name code semester section',
+        populate: {
+          path: 'program',
+          select: 'name code',
+          populate: {
+            path: 'department',
+            select: 'name code'
+          }
+        }
+      });
+
+    res.json({
+      message: `Reverted to version ${versionNumber}`,
+      timetable: updatedTimetable
+    });
+
+  } catch (error) {
+    console.error('Error reverting timetable:', error);
+    res.status(500).json({ message: 'Error reverting timetable', error: error.message });
+  }
+});
+
 module.exports = router;

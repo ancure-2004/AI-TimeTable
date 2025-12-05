@@ -37,7 +37,34 @@ const timetableSchema = new Schema({
     type: String,
     enum: ['draft', 'published', 'archived'],
     default: 'draft'
-  }
+  },
+  
+  // Phase 6: Edit tracking fields
+  isEdited: {
+    type: Boolean,
+    default: false
+  },
+  lastEditedAt: {
+    type: Date
+  },
+  lastEditedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  currentVersion: {
+    type: Number,
+    default: 1
+  },
+  editHistory: [{
+    versionNumber: Number,
+    timestamp: Date,
+    editedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    changeDescription: String,
+    scheduleSnapshot: Schema.Types.Mixed
+  }]
 }, {
   timestamps: true
 });

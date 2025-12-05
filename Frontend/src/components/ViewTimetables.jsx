@@ -168,6 +168,16 @@ const ViewTimetables = () => {
                           </div>
                         </div>
                         <div className="flex flex-col gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/edit-timetable/${tt._id}`);
+                            }}
+                            className="text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                            title="Edit this timetable"
+                          >
+                            Edit
+                          </button>
                           {tt.status === 'draft' && (
                             <button
                               onClick={(e) => {

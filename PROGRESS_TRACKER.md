@@ -222,6 +222,454 @@ All administrative entity management is now complete with full CRUD operations:
 
 ---
 
+## 🎯 PHASE 6: TIMETABLE EDITING & REFINEMENT - IN PROGRESS
+
+### ✅ Phase 6.1 - Basic Editing - Steps 1, 2, 3 & 4 COMPLETE (Dec 6, Session 3)
+
+**What Was Implemented:**
+
+**STEP 1: Edit Button and Basic Interface**
+
+**1. Edit Button Added to ViewTimetables:**
+- Added "Edit" button to each timetable in the list
+- Button appears above "Publish" and "Delete" buttons
+- Clicking navigates to `/edit-timetable/:id` route
+- Uses indigo color scheme to distinguish from other actions
+
+**2. EditTimetable Component Created:**
+- New component at `Frontend/src/components/EditTimetable.jsx`
+- Fetches and displays timetable in editable mode
+- Shows timetable info banner with:
+  - Class details (name, department, program, semester, section)
+  - Status indicator (shows "MODIFIED" when changes are made)
+  - "Manually Edited" badge if timetable was previously edited
+  - Cancel, Revert, and Save Changes buttons
+- Editable grid with hover effects:
+  - Cells highlight on hover (indigo background)
+  - Edit icon appears on hover over occupied slots
+  - Empty slots show "Click to add" on hover
+  - Each cell is clickable and opens edit modal
+- Instructions section explaining how to use the editor
+- Professional UI matching the rest of the admin interface
+
+**3. Route Configuration:**
+- Added route `/edit-timetable/:id` to App.jsx
+- Protected route (admin only)
+- Imported EditTimetable component
+
+---
+
+**STEP 2: SlotEditModal Component**
+
+**4. SlotEditModal Component Created:**
+- New component at `Frontend/src/components/SlotEditModal.jsx`
+- Full-featured modal for editing individual time slots
+- Three slot types supported:
+  - 📚 **Class**: Regular class with subject, teacher, and classroom
+  - 🕐 **Free**: Empty/free period
+  - 🎉 **Event**: Special event with custom name
+
+**Modal Features:**
+- **For Class Type:**
+  - Subject dropdown showing only subjects assigned to this class
+  - Teacher field auto-populated based on selected subject
+  - Classroom dropdown showing all available classrooms with details
+  - All fields validated (marked with * for required)
+  
+- **For Event Type:**
+  - Event name input field
+  - Supports custom event names (meetings, workshops, etc.)
+  
+- **For Free Type:**
+  - Simple confirmation that slot will be marked as free
+  - No additional fields needed
+
+- **UI Elements:**
+  - Clean modal design with header showing day and time
+  - Three-button slot type selector with visual feedback
+  - Form validation with error messages
+  - Info box explaining validation rules
+  - Save and Cancel buttons
+  - Loading state while fetching data
+  - Responsive design
+
+**5. Integration with EditTimetable:**
+- Modal opens when clicking any cell in the timetable
+- Passes current slot data to modal
+- Pre-fills form with existing data if slot is occupied
+- Updates timetable state when changes are saved
+- Marks timetable as modified (enables Save Changes button)
+- Stores original timetable for reverting changes
+
+**6. Handler Functions Added:**
+- `handleSlotClick()`: Opens modal with slot details
+- `handleSaveSlot()`: Updates local timetable state with changes
+- `handleSaveChanges()`: Saves all changes (backend API in next step)
+- `handleRevert()`: Reverts all changes to original state
+
+**Files Modified/Created:**
+- `Frontend/src/components/ViewTimetables.jsx` (modified - Edit button)
+- `Frontend/src/components/EditTimetable.jsx` (modified - integrated modal)
+- `Frontend/src/components/SlotEditModal.jsx` (new - complete modal)
+- `Frontend/src/App.jsx` (modified - route added)
+- `PROGRESS_TRACKER.md` (this file)
+
+**Current Status:**
+- ✅ Step 1 COMPLETE: Edit button and EditTimetable interface
+- ✅ Step 2 COMPLETE: SlotEditModal for manual slot editing
+- ✅ Step 3 COMPLETE: Backend API for conflict validation and saving
+- ✅ Step 4 COMPLETE: Version history viewer UI
+- 🏁 Phase 6.1 COMPLETE! Ready for Phase 6.2 (Drag-and-Drop)
+
+---
+
+**STEP 4: Version History Viewer UI**
+
+**10. VersionHistory Component Created:**
+
+New component at `Frontend/src/components/VersionHistory.jsx` with:
+
+**Features:**
+- Beautiful timeline-style version display
+- Shows all saved versions in chronological order
+- Each version displays:
+  - Version number with visual indicator
+  - Change description
+  - Editor name (who made the change)
+  - Timestamp (formatted date and time)
+  - "Current" badge for active version
+  - Revert button for previous versions
+
+**UI Design:**
+- **Timeline Layout:**
+  - Vertical timeline with connecting lines
+  - Numbered circles for each version
+  - Current version highlighted in green
+  - Previous versions in gray
+  - Hover effects on version cards
+
+- **Version Cards:**
+  - Clean card design with border
+  - Hover state shows indigo border
+  - User icon and timestamp icons
+  - Change description text
+  - Revert button (except for current version)
+
+- **Modal Design:**
+  - Full-screen modal with backdrop
+  - Header with version count
+  - Scrollable timeline
+  - Info box explaining version control
+  - Close button
+
+**Functionality:**
+- Fetches history from backend API
+- Displays loading state with spinner
+- Shows error state if fetch fails
+- Empty state if no history exists
+- Revert button calls backend API
+- Confirmation dialog before reverting
+- Loading state during revert
+- Success message with new version number
+- Refreshes parent timetable after revert
+
+**11. Integration with EditTimetable:**
+
+Updated EditTimetable.jsx to include:
+- "View History" button (purple) in info banner
+- Shows history icon (clock)
+- Opens VersionHistory modal when clicked
+- `handleVersionRevert` function to handle revert callback
+- Updates timetable state after successful revert
+- Clears unsaved changes flag
+
+**Version History Features:**
+
+1. **Timeline View:**
+   - Chronological display of all versions
+   - Visual connection between versions
+   - Clear indication of current version
+   - Easy to scan and understand
+
+2. **Version Information:**
+   - Version number (incremental)
+   - Who made the change
+   - When it was made
+   - Description of changes
+   - Visual status indicators
+
+3. **Revert Functionality:**
+   - One-click revert to any version
+   - Confirmation before reverting
+   - Creates new version (no data loss)
+   - Shows loading state
+   - Success/error feedback
+
+4. **User Experience:**
+   - Professional timeline design
+   - Clear visual hierarchy
+   - Intuitive navigation
+   - Helpful info box
+   - Responsive layout
+
+**Current Status:**
+- ✅ Step 1 COMPLETE: Edit button and EditTimetable interface
+- ✅ Step 2 COMPLETE: SlotEditModal for manual slot editing
+- ✅ Step 3 COMPLETE: Backend API for conflict validation and saving
+- ✅ Step 4 COMPLETE: Version history viewer UI
+- 🏁 Phase 6.1 COMPLETE! Ready for Phase 6.2 (Drag-and-Drop)
+
+---
+
+**STEP 3: Backend API for Conflict Validation and Saving**
+
+**7. Backend Routes Added (timetables.js):**
+
+Four new API endpoints for Phase 6:
+
+a) **POST `/timetables/:id/validate-slot`** - Validate slot changes
+   - Checks for conflicts before allowing edits
+   - Validates 5 types of constraints:
+     1. **Lunch break**: Prevents scheduling during slot 4 (13:00-14:00)
+     2. **Teacher clash**: Ensures teacher isn't teaching elsewhere at same time
+     3. **Room clash**: Ensures classroom isn't double-booked
+     4. **Teacher cooldown**: Warns if teacher has 3+ consecutive classes
+     5. **Subject-teacher mapping**: Verifies teacher is assigned to teach that subject
+   - Returns conflicts array with type and message
+   - Distinguishes between errors (blocking) and warnings (non-blocking)
+
+b) **PUT `/timetables/:id/edit`** - Save edited timetable
+   - Saves current version to editHistory before making changes
+   - Updates schedule with new data
+   - Increments version number
+   - Marks timetable as edited (isEdited = true)
+   - Tracks who edited and when (lastEditedBy, lastEditedAt)
+   - Returns updated timetable with populated data
+
+c) **GET `/timetables/:id/history`** - Get edit history
+   - Returns all versions with timestamps
+   - Shows who made each edit
+   - Includes change descriptions
+   - Returns current version number
+
+d) **POST `/timetables/:id/revert/:versionNumber`** - Revert to previous version
+   - Finds requested version in history
+   - Saves current state before reverting
+   - Restores old schedule
+   - Creates new version entry for revert action
+   - Increments version number
+
+**8. Database Model Updates (timetable.model.js):**
+
+Added new fields to Timetable schema:
+```javascript
+isEdited: Boolean           // True if manually edited
+lastEditedAt: Date         // Timestamp of last edit
+lastEditedBy: ObjectId     // User who last edited
+currentVersion: Number     // Current version number (starts at 1)
+editHistory: [{            // Array of all versions
+  versionNumber: Number,
+  timestamp: Date,
+  editedBy: ObjectId,
+  changeDescription: String,
+  scheduleSnapshot: Mixed  // Full timetable at that version
+}]
+```
+
+**9. Frontend Integration (EditTimetable.jsx):**
+
+Updated EditTimetable component to use backend APIs:
+
+a) **Real-time Validation:**
+   - `handleSaveSlot` now calls validation API before saving
+   - Checks for conflicts when editing class slots
+   - Displays errors and blocks save if conflicts found
+   - Shows warnings but allows save with confirmation
+   - Free slots and events skip validation
+
+b) **Save Functionality:**
+   - `handleSaveChanges` now saves to database via API
+   - Gets user ID from localStorage
+   - Shows loading state with spinner
+   - Creates new version in history
+   - Updates local state with saved data
+   - Displays success message with version number
+   - Handles errors gracefully
+
+c) **Error Display:**
+   - Red alert box shows validation errors
+   - Lists all conflicts in bullet points
+   - Appears above instructions section
+   - Clears when slot is successfully saved
+
+d) **UI Enhancements:**
+   - Save button shows "Saving..." with spinner
+   - Button disabled while saving
+   - Confirmation dialog before saving
+   - Success/error alerts
+   - Error state management
+
+**Validation Logic Details:**
+
+The conflict checker performs comprehensive validation:
+
+1. **Teacher Clash Detection:**
+   - Queries all other timetables (draft + published)
+   - Checks if teacher is scheduled at same day/slot
+   - Shows which class has the conflict
+   - Prevents double-booking teachers
+
+2. **Room Clash Detection:**
+   - Queries all other timetables
+   - Checks if classroom is booked at same day/slot
+   - Shows which class is using the room
+   - Prevents room double-booking
+
+3. **Lunch Break Protection:**
+   - Hard block on slot 4 (13:00-14:00)
+   - Returns error immediately
+   - Cannot be overridden
+
+4. **Teacher Cooldown:**
+   - Counts consecutive classes before and after slot
+   - Warns if 3+ consecutive classes detected
+   - Non-blocking (warning only)
+   - Can be overridden with confirmation
+
+5. **Subject-Teacher Mapping:**
+   - Looks up ClassSubject assignments
+   - Verifies teacher is assigned to teach that subject for that class
+   - Prevents unauthorized subject assignments
+   - Blocks save if invalid
+
+**Version Control System:**
+
+Every edit is tracked:
+- Before any change, current state is saved to history
+- Each version has a number, timestamp, editor, and description
+- Full schedule snapshot stored for each version
+- Can revert to any previous version
+- Reverting creates a new version (no data loss)
+
+**Current Status:**
+- ✅ Step 1 COMPLETE: Edit button and EditTimetable interface
+- ✅ Step 2 COMPLETE: SlotEditModal for manual slot editing
+- ✅ Step 3 COMPLETE: Backend API for conflict validation and saving
+- 🔲 Next: Step 4 - Version history viewer UI (optional enhancement)
+
+**How to Test:**
+
+**Full Workflow Test:**
+1. Start all services (Backend, Solver, Frontend)
+2. Login as admin (admin@college.edu / admin123)
+3. Go to "View All Timetables"
+4. Click "Edit" on any timetable
+
+**Test Slot Editing:**
+5. Click on any occupied cell in the timetable
+6. Modal opens with current class details
+7. Change the subject (teacher auto-updates)
+8. Change the classroom
+9. Click "Save Changes" in modal
+10. System validates the change:
+    - If conflicts exist: Shows error alert, blocks save
+    - If warnings exist: Shows confirmation dialog
+    - If valid: Updates the cell immediately
+
+**Test Conflict Detection:**
+11. Try to assign a teacher who's already teaching at that time
+    - Should show "Teacher clash" error
+12. Try to book a room that's already in use
+    - Should show "Room clash" error
+13. Try to schedule a class during lunch (slot 4, 13:00-14:00)
+    - Should show "Lunch break" error
+14. Try to give a teacher 3+ consecutive classes
+    - Should show warning but allow with confirmation
+
+**Test Different Slot Types:**
+15. Click on an empty cell
+16. Select "Free" slot type - saves immediately
+17. Click another cell, select "Event"
+18. Enter event name (e.g., "Department Meeting")
+19. Save - cell shows event in yellow
+
+**Test Save to Database:**
+20. Make several changes to different slots
+21. Notice "MODIFIED (Unsaved Changes)" status
+22. Click "Save Changes" button (green)
+23. Confirmation dialog appears
+24. Confirm - shows "Saving..." with spinner
+25. Success message shows with version number
+26. Status changes to "No Changes"
+27. Timetable is now saved to database
+
+**Test Revert:**
+28. Make more changes to some slots
+29. Click "Revert Changes" (yellow button)
+30. Confirmation dialog appears
+31. Confirm - all changes are undone
+32. Timetable returns to last saved state
+
+**Test Persistence:**
+33. Navigate away from the page
+34. Come back to "View All Timetables"
+35. Notice "Manually Edited" badge on edited timetables
+36. Click "Edit" again
+37. All saved changes are still there
+38. Edit history is preserved
+
+**Test Version History:**
+39. Click "View History" button (purple, with clock icon)
+40. Modal opens showing timeline of all versions
+41. See version numbers, timestamps, who edited
+42. Current version has green badge
+43. Previous versions have "Revert" button
+44. Click "Revert" on an old version
+45. Confirmation dialog appears
+46. Confirm - shows "Reverting..." with spinner
+47. Success message shows new version number
+48. Timetable updates with old schedule
+49. Close history modal
+50. Notice version number incremented
+51. Open history again - revert created new version
+
+**What Works:**
+- ✅ Opening modal on cell click
+- ✅ Pre-filling form with existing data
+- ✅ Subject dropdown with assigned subjects only
+- ✅ Auto-filling teacher based on subject
+- ✅ Classroom dropdown with all classrooms
+- ✅ Switching between Class/Free/Event types
+- ✅ **Real-time conflict validation**
+- ✅ **Teacher clash detection**
+- ✅ **Room clash detection**
+- ✅ **Lunch break protection**
+- ✅ **Teacher cooldown warnings**
+- ✅ **Subject-teacher mapping validation**
+- ✅ **Saving changes to database**
+- ✅ **Version control and history tracking**
+- ✅ Marking timetable as modified
+- ✅ Reverting all changes
+- ✅ Visual feedback (modified slots, status badges)
+- ✅ **Error display with conflict details**
+- ✅ **Loading states during save**
+- ✅ **Success/error notifications**
+- ✅ **Version history viewer with timeline**
+- ✅ **Revert to previous versions**
+- ✅ **Visual version tracking**
+
+**Files Modified/Created:**
+- `Backend/routes/timetables.js` (modified - 4 new routes added)
+- `Backend/models/timetable.model.js` (modified - version control fields)
+- `Frontend/src/components/EditTimetable.jsx` (modified - API integration + history)
+- `Frontend/src/components/SlotEditModal.jsx` (created in Step 2)
+- `Frontend/src/components/VersionHistory.jsx` (created in Step 4)
+- `Frontend/src/components/ViewTimetables.jsx` (modified - Edit button)
+- `Frontend/src/App.jsx` (modified - route added)
+- `PROGRESS_TRACKER.md` (this file)
+
+---
+
 ## 🔧 Recent Changes
 
 ### December 6, 2025 - Session 2: User Management Complete - PHASE 5 FINISHED! 🎉
@@ -450,10 +898,55 @@ curl http://localhost:8000/
 ## 🔮 Future Phases
 
 ### Phase 6: Timetable Editing & Refinement (NEXT)
-- Manual adjustments to generated timetables
-- Drag-and-drop to move classes
-- Conflict detection during edits
-- Version control for timetables
+
+**Goal:** Make AI-generated timetables editable by administrators
+
+**Why Needed:** 
+- Real-world scenarios require manual adjustments (teacher requests, room changes, last-minute events)
+- Can't regenerate entire timetable for small tweaks
+- Need flexibility while maintaining constraint validation
+
+**Phase 6.1 - Basic Editing (High Priority):**
+1. Edit button on ViewTimetables page
+2. EditTimetable.jsx component with editable grid
+3. SlotEditModal for manual slot changes
+4. Conflict detection API
+5. Save edited timetables with version tracking
+
+**Phase 6.2 - Drag-and-Drop (Medium Priority):**
+1. Drag-and-drop library integration
+2. Visual feedback during drag operations
+3. Real-time validation of drop zones
+4. Slot swapping functionality
+
+**Phase 6.3 - Version Control (Medium Priority):**
+1. Edit history tracking
+2. Version history viewer
+3. Revert to previous version
+4. Compare different versions
+
+**Phase 6.4 - Advanced Features (Optional):**
+1. Smart suggestions for conflict resolution
+2. Batch operations (move multiple slots)
+3. Timetable templates
+4. Copy and modify existing timetables
+
+**Key Features:**
+- ✓ Edit individual slots (subject, teacher, room)
+- ✓ Drag-and-drop to move/swap classes
+- ✓ Real-time conflict detection (teacher clash, room clash, constraints)
+- ✓ Version control with edit history
+- ✓ Validation before saving
+- ✓ Separate draft/published states
+
+**Technical Implementation:**
+- New API routes: PUT /timetables/:id/edit-slot, /swap-slots, /validate-slot
+- Conflict validation logic on backend
+- Database schema updates for version tracking
+- React DnD or native drag-and-drop
+- Modal-based slot editing
+
+**See PHASE_6_EXPLANATION.md for complete details**
 
 ### Phase 7: Reports & Analytics
 - Teacher workload reports
@@ -485,6 +978,6 @@ curl http://localhost:8000/
 
 ---
 
-**Session End:** December 6, 2025 - Session 2
-**Latest Work:** Completed User Management with Create/Edit functionality
-**Status:** 🎉 PHASE 5 IS 100% COMPLETE! Ready to move to Phase 6 - Timetable Editing! 🚀
+**Session End:** December 6, 2025 - Session 3
+**Latest Work:** Phase 6.1 Complete - Full timetable editing with validation, persistence, and version history!
+**Status:** 🏆 PHASE 6.1 (BASIC EDITING) 100% COMPLETE! All core editing features are fully functional.
